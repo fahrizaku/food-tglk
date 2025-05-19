@@ -10,7 +10,6 @@ import {
   PlusCircle,
   Link,
 } from "lucide-react";
-import { dummyFoods } from "@/data/foodProducts";
 import MediaGallery from "./_components/MediaGallery";
 
 // Fungsi untuk memformat harga
@@ -31,16 +30,28 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [mediaToDisplay, setMediaToDisplay] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchProduct = () => {
+    const fetchProduct = async () => {
       setLoading(true);
-      // Simulasi fetching data
-      setTimeout(() => {
-        const foundProduct = dummyFoods.find(
-          (item) => item.id === parseInt(id)
-        );
-        setProduct(foundProduct || null);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/foods/${id}`);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            setError("Produk tidak ditemukan");
+          } else {
+            setError("Terjadi kesalahan saat mengambil data");
+          }
+          setLoading(false);
+          return;
+        }
+
+        const foundProduct = await response.json();
+        setProduct(foundProduct);
 
         if (foundProduct) {
           // Set default variant if available
@@ -51,9 +62,12 @@ export default function ProductDetailPage() {
           // Initialize media
           setMediaToDisplay(foundProduct.media || []);
         }
-
+      } catch (error) {
+        console.error("Error fetching product:", error);
+        setError("Terjadi kesalahan saat mengambil data");
+      } finally {
         setLoading(false);
-      }, 500);
+      }
     };
 
     if (id) {
@@ -149,7 +163,7 @@ export default function ProductDetailPage() {
     );
   }
 
-  if (!product) {
+  if (error || !product) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
         <button
@@ -161,7 +175,7 @@ export default function ProductDetailPage() {
         </button>
         <div className="text-center py-8 sm:py-12">
           <h1 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
-            Produk Tidak Ditemukan
+            {error || "Produk Tidak Ditemukan"}
           </h1>
           <p className="text-sm sm:text-base text-gray-500">
             Maaf, produk yang Anda cari tidak tersedia
@@ -215,7 +229,7 @@ export default function ProductDetailPage() {
             )}
             {getCurrentStock() <= 10 && getCurrentStock() > 0 && (
               <div className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded">
-                Sisa {getCurrentStock()} {product.unit}
+                Sisa {getCurrentStock()} {product.unit || "porsi"}
               </div>
             )}
             {getCurrentStock() <= 0 && (
@@ -251,7 +265,7 @@ export default function ProductDetailPage() {
                 </span>
               )}
               <div className="text-xs sm:text-sm text-gray-500 mt-1">
-                per {product.unit}
+                per {product.unit || "porsi"}
               </div>
             </div>
           </div>
@@ -265,16 +279,18 @@ export default function ProductDetailPage() {
                     key={index}
                     className="h-4 w-4 sm:h-5 sm:w-5"
                     fill={
-                      index < Math.floor(product.rating)
+                      index < Math.floor(product.rating || 0)
                         ? "currentColor"
                         : "none"
                     }
-                    strokeWidth={index < Math.floor(product.rating) ? 0 : 2}
+                    strokeWidth={
+                      index < Math.floor(product.rating || 0) ? 0 : 2
+                    }
                   />
                 ))}
               </div>
               <span className="text-xs sm:text-sm text-gray-500 ml-2">
-                ({product.reviewCount} ulasan)
+                ({product.reviewCount || 0} ulasan)
               </span>
             </div>
           </div>
@@ -333,7 +349,7 @@ export default function ProductDetailPage() {
             <p className="text-sm sm:text-base text-gray-600">
               {selectedVariant && selectedVariant.description
                 ? selectedVariant.description
-                : product.description}
+                : product.description || "-"}
             </p>
           </div>
 
@@ -354,10 +370,46 @@ export default function ProductDetailPage() {
               {getCurrentStock() <= 0
                 ? "Stok Habis"
                 : getCurrentStock() <= 10
-                ? `Sisa ${getCurrentStock()} ${product.unit}`
+                ? `Sisa ${getCurrentStock()} ${product.unit || "porsi"}`
                 : "Stok Tersedia"}
             </p>
           </div>
+
+          {/* Quantity selector */}
+          {getCurrentStock() > 0 && (
+            <div className="border-b border-gray-200 pb-3 mb-4">
+              <h3 className="text-base sm:text-lg font-medium text-gray-800 mb-1 sm:mb-2">
+                Jumlah
+              </h3>
+              <div className="flex items-center">
+                <button
+                  onClick={() => handleQuantityChange(-1)}
+                  disabled={quantity <= 1}
+                  className={`p-1 ${
+                    quantity <= 1
+                      ? "text-gray-300"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <MinusCircle className="h-6 w-6" />
+                </button>
+                <span className="mx-3 w-8 text-center">{quantity}</span>
+                <button
+                  onClick={() => handleQuantityChange(1)}
+                  disabled={
+                    getCurrentStock() !== null && quantity >= getCurrentStock()
+                  }
+                  className={`p-1 ${
+                    getCurrentStock() !== null && quantity >= getCurrentStock()
+                      ? "text-gray-300"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <PlusCircle className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Informasi Pembelian */}
           <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
@@ -366,7 +418,7 @@ export default function ProductDetailPage() {
                 className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 sm:py-3 rounded-lg flex items-center justify-center text-sm sm:text-base font-medium"
                 onClick={() =>
                   alert(
-                    `Menambahkan ${product.name}${
+                    `Menambahkan ${quantity} ${product.name}${
                       selectedVariant ? ` (${selectedVariant.name})` : ""
                     } ke keranjang`
                   )

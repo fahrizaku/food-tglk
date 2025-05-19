@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import { Search } from "lucide-react";
 import Image from "next/image";
-import { dummyFoods } from "@/data/foodProducts";
 import Link from "next/link";
 
 // Fungsi untuk memformat harga
@@ -69,11 +68,11 @@ const FoodCard = ({ food }) => {
 
           <div className="flex items-center mb-2">
             <div className="flex text-yellow-400">
-              {"★".repeat(Math.floor(food.rating))}
-              {"☆".repeat(5 - Math.floor(food.rating))}
+              {"★".repeat(Math.floor(food.rating || 0))}
+              {"☆".repeat(5 - Math.floor(food.rating || 0))}
             </div>
             <span className="text-xs text-gray-500 ml-1">
-              ({food.reviewCount})
+              ({food.reviewCount || 0})
             </span>
           </div>
 
@@ -97,7 +96,9 @@ const FoodCard = ({ food }) => {
                 {formatPrice(food.price)}
               </span>
             )}
-            <div className="text-xs text-gray-500">per {food.unit}</div>
+            <div className="text-xs text-gray-500">
+              per {food.unit || "porsi"}
+            </div>
           </div>
         </div>
       </div>
@@ -111,38 +112,84 @@ export default function FoodPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    totalCount: 0,
+    totalPages: 0,
+  });
 
+  // Fetch data from API
   useEffect(() => {
-    // Simulasi fetching data
-    const fetchFoods = () => {
+    const fetchFoods = async () => {
       setLoading(true);
-      // Gunakan setTimeout untuk mensimulasikan network delay
-      setTimeout(() => {
-        setFoods(dummyFoods);
-        setSearchResults(dummyFoods);
+      try {
+        const response = await fetch("/api/foods");
+        const data = await response.json();
+
+        if (data.data) {
+          setFoods(data.data);
+          setSearchResults(data.data);
+          setPagination(
+            data.meta || {
+              page: 1,
+              pageSize: data.data.length,
+              totalCount: data.data.length,
+              totalPages: 1,
+            }
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching foods:", error);
+      } finally {
         setLoading(false);
-      }, 1000);
+      }
     };
 
     fetchFoods();
   }, []);
 
-  const handleSearch = (e) => {
+  const handleSearch = async (e) => {
     e.preventDefault();
 
     if (searchQuery.trim() === "") {
+      // If search is empty, reset to original data
       setSearchResults(foods);
       return;
     }
 
-    const search = searchQuery.toLowerCase();
-    const results = foods.filter(
-      (food) =>
-        food.name.toLowerCase().includes(search) ||
-        food.category.toLowerCase().includes(search)
-    );
+    setLoading(true);
+    try {
+      // Use API for search
+      const response = await fetch(
+        `/api/foods?search=${encodeURIComponent(searchQuery)}`
+      );
+      const data = await response.json();
 
-    setSearchResults(results);
+      if (data.data) {
+        setSearchResults(data.data);
+        setPagination(
+          data.meta || {
+            page: 1,
+            pageSize: data.data.length,
+            totalCount: data.data.length,
+            totalPages: 1,
+          }
+        );
+      }
+    } catch (error) {
+      console.error("Error searching foods:", error);
+      // Fallback to client-side filtering if API search fails
+      const search = searchQuery.toLowerCase();
+      const results = foods.filter(
+        (food) =>
+          food.name.toLowerCase().includes(search) ||
+          food.category.toLowerCase().includes(search)
+      );
+      setSearchResults(results);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -205,7 +252,8 @@ export default function FoodPage() {
           <>
             <div className="flex justify-between items-center mb-4">
               <p className="text-sm text-gray-500">
-                Menampilkan {searchResults.length} menu
+                Menampilkan {searchResults.length} menu dari{" "}
+                {pagination.totalCount}
               </p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
