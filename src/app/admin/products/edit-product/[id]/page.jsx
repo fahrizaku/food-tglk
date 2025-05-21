@@ -1,7 +1,16 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function AddFoodProduct() {
+export default function EditFoodProduct({ params }) {
+  const router = useRouter();
+  const foodId = params?.id;
+
+  // States
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+
   // Main food form state
   const [foodData, setFoodData] = useState({
     name: "",
@@ -12,25 +21,78 @@ export default function AddFoodProduct() {
     description: "",
     isNewArrival: false,
     stock: 0,
+    rating: 0,
+    reviewCount: 0,
   });
 
   // State for variants
-  const [variants, setVariants] = useState([
-    {
-      name: "",
-      price: "",
-      discountPrice: "",
-      stock: 0,
-      description: "",
-      thumbnail: "",
-      media: [],
-    },
-  ]);
+  const [variants, setVariants] = useState([]);
 
   // State for main food media
-  const [media, setMedia] = useState([
-    { type: "image", url: "", caption: "", thumbnail: "" },
-  ]);
+  const [media, setMedia] = useState([]);
+
+  // Fetch product data
+  useEffect(() => {
+    const fetchFood = async () => {
+      if (!foodId) return;
+
+      try {
+        setIsLoading(true);
+        const response = await fetch(`/api/foods/${foodId}`);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch product data");
+        }
+
+        const food = await response.json();
+
+        // Set main food data
+        setFoodData({
+          name: food.name || "",
+          category: food.category || "",
+          price: food.price || 0,
+          discountPrice: food.discountPrice || "",
+          unit: food.unit || "porsi",
+          description: food.description || "",
+          isNewArrival: food.isNewArrival || false,
+          stock: food.stock || 0,
+          rating: food.rating || 0,
+          reviewCount: food.reviewCount || 0,
+        });
+
+        // Set media
+        if (food.media && food.media.length > 0) {
+          setMedia(food.media);
+        } else {
+          setMedia([{ type: "image", url: "", caption: "", thumbnail: "" }]);
+        }
+
+        // Set variants
+        if (food.variants && food.variants.length > 0) {
+          setVariants(food.variants);
+        } else {
+          setVariants([
+            {
+              name: "",
+              price: "",
+              discountPrice: "",
+              stock: 0,
+              description: "",
+              thumbnail: "",
+              media: [],
+            },
+          ]);
+        }
+      } catch (err) {
+        console.error("Error fetching food:", err);
+        setError("Gagal mengambil data produk. Silakan coba lagi.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchFood();
+  }, [foodId]);
 
   // Handle main form changes
   const handleFoodChange = (e) => {
@@ -40,10 +102,17 @@ export default function AddFoodProduct() {
       [name]:
         type === "checkbox"
           ? checked
-          : name === "price" || name === "discountPrice" || name === "stock"
+          : name === "price" ||
+            name === "discountPrice" ||
+            name === "stock" ||
+            name === "reviewCount"
           ? value === ""
             ? ""
             : parseInt(value, 10)
+          : name === "rating"
+          ? value === ""
+            ? 0
+            : parseFloat(value)
           : value,
     });
   };
@@ -111,6 +180,19 @@ export default function AddFoodProduct() {
   const handleVariantMediaChange = (variantIndex, mediaIndex, e) => {
     const { name, value } = e.target;
     const updatedVariants = [...variants];
+    if (!updatedVariants[variantIndex].media) {
+      updatedVariants[variantIndex].media = [];
+    }
+
+    if (!updatedVariants[variantIndex].media[mediaIndex]) {
+      updatedVariants[variantIndex].media[mediaIndex] = {
+        type: "image",
+        url: "",
+        caption: "",
+        thumbnail: "",
+      };
+    }
+
     updatedVariants[variantIndex].media[mediaIndex][name] = value;
     setVariants(updatedVariants);
   };
@@ -141,68 +223,97 @@ export default function AddFoodProduct() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!foodId) {
+      setError("ID produk tidak valid");
+      return;
+    }
+
     // Create the complete food object
-    const newFood = {
+    const updatedFood = {
       ...foodData,
       media,
-      variants,
+      variants: variants.filter((variant) => variant.name.trim() !== ""),
     };
 
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch("/api/foods", {
-        method: "POST",
+      setSaving(true);
+
+      const response = await fetch(`/api/foods/${foodId}`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(newFood),
+        body: JSON.stringify(updatedFood),
       });
 
-      if (response.ok) {
-        alert("Produk berhasil ditambahkan!");
-        // Reset form or redirect
-        resetForm();
-      } else {
-        const error = await response.json();
-        alert(`Gagal menambahkan produk: ${error.message}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to update product");
       }
+
+      // Redirect back to products list on success
+      alert("Produk berhasil diperbarui!");
+      router.push("/products"); // Adjust this path to match your route structure
     } catch (error) {
-      console.error("Error adding food:", error);
-      alert("Terjadi kesalahan saat menambahkan produk.");
+      console.error("Error updating food:", error);
+      setError(`Gagal memperbarui produk: ${error.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
-  // Reset the form
-  const resetForm = () => {
-    setFoodData({
-      name: "",
-      category: "",
-      price: "",
-      discountPrice: "",
-      unit: "porsi",
-      description: "",
-      isNewArrival: false,
-      stock: 0,
-    });
-    setVariants([
-      {
-        name: "",
-        price: "",
-        discountPrice: "",
-        stock: 0,
-        description: "",
-        thumbnail: "",
-        media: [],
-      },
-    ]);
-    setMedia([{ type: "image", url: "", caption: "", thumbnail: "" }]);
+  // Cancel and go back
+  const handleCancel = () => {
+    if (confirm("Perubahan tidak akan disimpan. Yakin ingin kembali?")) {
+      router.push("/products"); // Adjust this path to match your route structure
+    }
   };
+
+  // Display loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex justify-center items-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-700">Memuat data produk...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Display error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-5xl mx-auto bg-white shadow-md rounded-lg p-6">
+          <div className="text-center text-red-600 p-4">
+            <h2 className="text-xl font-bold mb-2">Terjadi Kesalahan</h2>
+            <p>{error}</p>
+            <div className="mt-4 flex justify-center space-x-4">
+              <button
+                onClick={() => router.push("/products")}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              >
+                Kembali ke Daftar
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Coba Lagi
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-50 min-h-screen p-6">
       <div className="max-w-5xl mx-auto bg-white shadow-md rounded-lg p-6">
         <h1 className="text-2xl font-bold mb-6 text-gray-800">
-          Tambah Produk Makanan
+          Edit Produk Makanan
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-8">
@@ -302,6 +413,36 @@ export default function AddFoodProduct() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Rating (0-5)
+                </label>
+                <input
+                  type="number"
+                  name="rating"
+                  value={foodData.rating || 0}
+                  onChange={handleFoodChange}
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Jumlah Review
+                </label>
+                <input
+                  type="number"
+                  name="reviewCount"
+                  value={foodData.reviewCount || 0}
+                  onChange={handleFoodChange}
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Deskripsi
@@ -371,7 +512,7 @@ export default function AddFoodProduct() {
                     </label>
                     <select
                       name="type"
-                      value={item.type}
+                      value={item.type || "image"}
                       onChange={(e) => handleMediaChange(index, e)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
@@ -387,7 +528,7 @@ export default function AddFoodProduct() {
                     <input
                       type="text"
                       name="url"
-                      value={item.url}
+                      value={item.url || ""}
                       onChange={(e) => handleMediaChange(index, e)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -400,7 +541,7 @@ export default function AddFoodProduct() {
                     <input
                       type="text"
                       name="caption"
-                      value={item.caption}
+                      value={item.caption || ""}
                       onChange={(e) => handleMediaChange(index, e)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -413,7 +554,7 @@ export default function AddFoodProduct() {
                     <input
                       type="text"
                       name="thumbnail"
-                      value={item.thumbnail}
+                      value={item.thumbnail || ""}
                       onChange={(e) => handleMediaChange(index, e)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -461,7 +602,7 @@ export default function AddFoodProduct() {
                     <input
                       type="text"
                       name="name"
-                      value={variant.name}
+                      value={variant.name || ""}
                       onChange={(e) => handleVariantChange(vIndex, e)}
                       required
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -475,7 +616,7 @@ export default function AddFoodProduct() {
                     <input
                       type="number"
                       name="price"
-                      value={variant.price}
+                      value={variant.price || ""}
                       onChange={(e) => handleVariantChange(vIndex, e)}
                       required
                       min="0"
@@ -490,7 +631,7 @@ export default function AddFoodProduct() {
                     <input
                       type="number"
                       name="discountPrice"
-                      value={variant.discountPrice}
+                      value={variant.discountPrice || ""}
                       onChange={(e) => handleVariantChange(vIndex, e)}
                       min="0"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -504,7 +645,7 @@ export default function AddFoodProduct() {
                     <input
                       type="number"
                       name="stock"
-                      value={variant.stock}
+                      value={variant.stock || 0}
                       onChange={(e) => handleVariantChange(vIndex, e)}
                       min="0"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -518,7 +659,7 @@ export default function AddFoodProduct() {
                     <input
                       type="text"
                       name="thumbnail"
-                      value={variant.thumbnail}
+                      value={variant.thumbnail || ""}
                       onChange={(e) => handleVariantChange(vIndex, e)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -530,7 +671,7 @@ export default function AddFoodProduct() {
                     </label>
                     <textarea
                       name="description"
-                      value={variant.description}
+                      value={variant.description || ""}
                       onChange={(e) => handleVariantChange(vIndex, e)}
                       rows="2"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -579,7 +720,7 @@ export default function AddFoodProduct() {
                             </label>
                             <select
                               name="type"
-                              value={mediaItem.type}
+                              value={mediaItem.type || "image"}
                               onChange={(e) =>
                                 handleVariantMediaChange(vIndex, mediaIndex, e)
                               }
@@ -597,7 +738,7 @@ export default function AddFoodProduct() {
                             <input
                               type="text"
                               name="url"
-                              value={mediaItem.url}
+                              value={mediaItem.url || ""}
                               onChange={(e) =>
                                 handleVariantMediaChange(vIndex, mediaIndex, e)
                               }
@@ -612,7 +753,7 @@ export default function AddFoodProduct() {
                             <input
                               type="text"
                               name="caption"
-                              value={mediaItem.caption}
+                              value={mediaItem.caption || ""}
                               onChange={(e) =>
                                 handleVariantMediaChange(vIndex, mediaIndex, e)
                               }
@@ -627,7 +768,7 @@ export default function AddFoodProduct() {
                             <input
                               type="text"
                               name="thumbnail"
-                              value={mediaItem.thumbnail}
+                              value={mediaItem.thumbnail || ""}
                               onChange={(e) =>
                                 handleVariantMediaChange(vIndex, mediaIndex, e)
                               }
@@ -651,16 +792,20 @@ export default function AddFoodProduct() {
           <div className="flex justify-end space-x-4">
             <button
               type="button"
-              onClick={resetForm}
+              onClick={handleCancel}
               className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+              disabled={saving}
             >
-              Reset
+              Batal
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                saving ? "opacity-75 cursor-not-allowed" : ""
+              }`}
+              disabled={saving}
             >
-              Simpan Produk
+              {saving ? "Menyimpan..." : "Simpan Perubahan"}
             </button>
           </div>
         </form>

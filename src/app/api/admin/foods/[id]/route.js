@@ -1,5 +1,3 @@
-// This file would be saved as /src/app/api/foods/[id]/route.js
-
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
@@ -266,6 +264,55 @@ export async function PUT(request, { params }) {
     return NextResponse.json(
       {
         message: "Terjadi kesalahan saat memperbarui produk",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      },
+      { status: 500 }
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// DELETE - Remove a food by ID
+export async function DELETE(request, { params }) {
+  try {
+    const { id } = await params;
+    const foodId = parseInt(id);
+
+    if (isNaN(foodId)) {
+      return NextResponse.json(
+        { message: "ID produk tidak valid" },
+        { status: 400 }
+      );
+    }
+
+    // Check if the food exists
+    const existingFood = await prisma.food.findUnique({
+      where: { id: foodId },
+    });
+
+    if (!existingFood) {
+      return NextResponse.json(
+        { message: "Produk tidak ditemukan" },
+        { status: 404 }
+      );
+    }
+
+    // Delete the food (this will cascade delete variants and media because of onDelete: Cascade in the schema)
+    await prisma.food.delete({
+      where: { id: foodId },
+    });
+
+    return NextResponse.json(
+      { message: "Produk berhasil dihapus" },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error(`Error deleting food:`, error);
+    return NextResponse.json(
+      {
+        message: "Terjadi kesalahan saat menghapus produk",
         error:
           process.env.NODE_ENV === "development" ? error.message : undefined,
       },
